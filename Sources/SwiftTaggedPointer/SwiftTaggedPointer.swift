@@ -4,7 +4,7 @@
 //
 //  Created by Joseph Hinkle on 10/25/23.
 //
-// This file can be used by itself of you can use the Swift Package.
+// This file can be used by itself or you can use the Swift Package.
 //
 // We assume that:
 //  1. The provided pointers are 8 byte aligned
