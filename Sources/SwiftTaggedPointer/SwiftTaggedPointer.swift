@@ -70,7 +70,7 @@
 ///                          |   `dataInt16`   |                                              |
 ///                          |----------------------------------------------------------------|
 /// ```
-public struct TaggedPointer<P : _Pointer>: Equatable {
+public struct TaggedPointer<P : _Pointer>: Equatable, Sendable {
     
     #if !DEBUG
     @usableFromInline
@@ -257,8 +257,6 @@ public struct TaggedPointer<P : _Pointer>: Equatable {
         }
     }
 }
-
-extension TaggedPointer: Sendable where P: Sendable {}
 
 // Constants
 @_alwaysEmitIntoClient
