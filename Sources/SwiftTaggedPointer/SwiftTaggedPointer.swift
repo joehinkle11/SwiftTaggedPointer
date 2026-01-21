@@ -258,6 +258,8 @@ public struct TaggedPointer<P : _Pointer>: Equatable {
     }
 }
 
+extension TaggedPointer: Sendable where P: Sendable {}
+
 // Constants
 @_alwaysEmitIntoClient
 private let canonicalPointerGutsMask: Int = Int(bitPattern: 0b0000000000000000011111111111111111111111111111111111111111111000 as UInt)
