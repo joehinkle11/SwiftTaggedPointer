@@ -117,4 +117,10 @@ final class SwiftTaggedPointerTests: XCTestCase {
             }
         }
     }
+    func testSizes() throws {
+        XCTAssertEqual(
+            MemoryLayout<TaggedPointer<UnsafeRawPointer>>.size,
+            MemoryLayout<UInt64>.size,
+        )
+    }
 }

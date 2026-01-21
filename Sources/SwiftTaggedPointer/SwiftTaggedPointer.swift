@@ -84,6 +84,7 @@ public struct TaggedPointer<P : _Pointer>: Equatable {
     @_alwaysEmitIntoClient
     #endif
     public init(_ pointer: P?) {
+        assert(MemoryLayout<Self>.size == MemoryLayout<UInt64>.size)
         self._storage = 0
         self.setPointer(pointer)
     }
@@ -95,6 +96,7 @@ public struct TaggedPointer<P : _Pointer>: Equatable {
     #endif
     public func getPointer(_ type: P.Type = P.self) -> P? {
         assert(MemoryLayout<P>.size == MemoryLayout<UInt64>.size)
+        assert(MemoryLayout<Self>.size == MemoryLayout<UInt64>.size)
         // Make pointer canonical by setting top 17 bits to 0 and bottom 3 bits to 0
         return P(bitPattern: _storage & canonicalPointerGutsMask)
     }
