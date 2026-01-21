@@ -1,5 +1,5 @@
 import XCTest
-@testable import SwiftTaggedPointer
+import SwiftTaggedPointer
 
 final class SwiftTaggedPointerTests: XCTestCase {
     func testExample() throws {
@@ -32,6 +32,7 @@ final class SwiftTaggedPointerTests: XCTestCase {
                 XCTAssertEqual(tp.tagUInt3, 6)
                 XCTAssertEqual(tp.bitTag2, true)
                 tp.tagUInt3 = 1
+                XCTAssertEqual(tp.tagUInt3, 1)
                 XCTAssertEqual(tp.bitTag0, true)
                 XCTAssertEqual(tp.bitTag1, false)
                 XCTAssertEqual(tp.bitTag2, false)
@@ -39,6 +40,7 @@ final class SwiftTaggedPointerTests: XCTestCase {
                 XCTAssertEqual(tp.signBit, false)
                 XCTAssertEqual(p, tp.getPointer())
                 tp.signBit = true
+                XCTAssertEqual(tp.tagUInt3, 1)
                 XCTAssertEqual(tp.dataUInt16, 0)
                 XCTAssertEqual(tp.signBit, true)
                 XCTAssertEqual(p, tp.getPointer())
@@ -55,6 +57,7 @@ final class SwiftTaggedPointerTests: XCTestCase {
                 XCTAssertEqual(tp.dataUInt16, 37)
                 XCTAssertEqual(tp.signBit, false)
                 tp.signBit = true
+                XCTAssertEqual(tp.tagUInt3, 1)
                 XCTAssertEqual(tp.dataInt17, -38)
                 XCTAssertEqual(tp.dataUInt16, 37)
                 XCTAssertEqual(tp.signBit, true)
@@ -63,6 +66,7 @@ final class SwiftTaggedPointerTests: XCTestCase {
                 XCTAssertEqual(tp.dataUInt16, 0)
                 XCTAssertEqual(tp.signBit, false)
                 tp.signBit = true
+                XCTAssertEqual(tp.tagUInt3, 1)
                 XCTAssertEqual(tp.dataInt17, -1)
                 XCTAssertEqual(tp.dataUInt16, 0)
                 XCTAssertEqual(tp.signBit, true)
@@ -71,19 +75,44 @@ final class SwiftTaggedPointerTests: XCTestCase {
                 XCTAssertEqual(tp.dataUInt16, 4)
                 XCTAssertEqual(tp.signBit, true)
                 tp.signBit = false
+                XCTAssertEqual(tp.tagUInt3, 1)
                 XCTAssertEqual(tp.dataInt17, 4)
                 XCTAssertEqual(tp.dataUInt16, 4)
                 XCTAssertEqual(tp.signBit, false)
                 for uint17: Int32 in -65536...65535 {
                     tp.dataInt17 = uint17
-                    XCTAssertEqual(tp.dataInt17, uint17)
-                    XCTAssertEqual(tp.dataUInt16, uint17 < 0 ? UInt16(-(uint17 + 1)) : UInt16(uint17))
-                    XCTAssertEqual(tp.signBit, uint17 < 0)
-                    XCTAssertEqual(p, tp.getPointer())
-                    XCTAssertEqual(tp.bitTag0, true)
-                    XCTAssertEqual(tp.bitTag1, false)
-                    XCTAssertEqual(tp.bitTag2, false)
-                    XCTAssertEqual(tp.tagUInt3, 2)
+                    guard tp.dataInt17 == uint17 else {
+                        XCTFail()
+                        return
+                    }
+                    guard tp.dataUInt16 == (uint17 < 0 ? UInt16(-(uint17 + 1)) : UInt16(uint17)) else {
+                        XCTFail()
+                        return
+                    }
+                    guard tp.signBit == (uint17 < 0) else {
+                        XCTFail()
+                        return
+                    }
+                    guard p == tp.getPointer() else {
+                        XCTFail()
+                        return
+                    }
+                    guard tp.bitTag0 == true else {
+                        XCTFail()
+                        return
+                    }
+                    guard tp.bitTag1 == false else {
+                        XCTFail()
+                        return
+                    }
+                    guard tp.bitTag2 == false else {
+                        XCTFail()
+                        return
+                    }
+                    guard tp.tagUInt3 == 1 else {
+                        XCTFail()
+                        return
+                    }
                 }
             }
         }
