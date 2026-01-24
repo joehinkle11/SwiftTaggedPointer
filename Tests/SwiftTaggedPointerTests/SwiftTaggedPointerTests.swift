@@ -11,14 +11,14 @@ final class SwiftTaggedPointerTests: XCTestCase {
                 let tp2 = TaggedPointer(p2)
                 XCTAssertNotEqual(tp, tp2)
                 XCTAssertNotEqual(p, p2)
-                XCTAssertNotEqual(tp.getPointer(), tp2.getPointer())
-                XCTAssertEqual(p, tp.getPointer())
+                XCTAssertNotEqual(tp.pointer, tp2.pointer)
+                XCTAssertEqual(p, tp.pointer)
                 XCTAssertEqual(tp.tagUInt3, 0)
                 XCTAssertEqual(tp.bitTag0, false)
                 tp.bitTag0 = true
                 XCTAssertEqual(tp.tagUInt3, 1)
                 XCTAssertEqual(tp.bitTag0, true)
-                XCTAssertEqual(p, tp.getPointer())
+                XCTAssertEqual(p, tp.pointer)
                 XCTAssertEqual(tp.bitTag0, true)
                 tp.bitTag0 = false
                 XCTAssertEqual(tp.tagUInt3, 0)
@@ -38,20 +38,20 @@ final class SwiftTaggedPointerTests: XCTestCase {
                 XCTAssertEqual(tp.bitTag2, false)
                 XCTAssertEqual(tp.dataUInt16, 0)
                 XCTAssertEqual(tp.signBit, false)
-                XCTAssertEqual(p, tp.getPointer())
+                XCTAssertEqual(p, tp.pointer)
                 tp.signBit = true
                 XCTAssertEqual(tp.tagUInt3, 1)
                 XCTAssertEqual(tp.dataUInt16, 0)
                 XCTAssertEqual(tp.signBit, true)
-                XCTAssertEqual(p, tp.getPointer())
+                XCTAssertEqual(p, tp.pointer)
                 tp.dataUInt16 = .max
                 XCTAssertEqual(tp.dataUInt16, .max)
                 XCTAssertEqual(tp.signBit, true)
-                XCTAssertEqual(p, tp.getPointer())
+                XCTAssertEqual(p, tp.pointer)
                 tp.dataUInt16 = 0
                 XCTAssertEqual(tp.dataUInt16, 0)
                 XCTAssertEqual(tp.signBit, true)
-                XCTAssertEqual(p, tp.getPointer())
+                XCTAssertEqual(p, tp.pointer)
                 tp.dataInt17 = 37
                 XCTAssertEqual(tp.dataInt17, 37)
                 XCTAssertEqual(tp.dataUInt16, 37)
@@ -93,7 +93,7 @@ final class SwiftTaggedPointerTests: XCTestCase {
                         XCTFail()
                         return
                     }
-                    guard p == tp.getPointer() else {
+                    guard p == tp.pointer else {
                         XCTFail()
                         return
                     }
@@ -114,6 +114,26 @@ final class SwiftTaggedPointerTests: XCTestCase {
                         return
                     }
                 }
+                tp.dataUInt16 = .zero
+                tp.signBit = false
+                tp.tagUInt3 = 0
+                let z = 5
+                withUnsafePointer(to: z) { p3 in
+                    XCTAssertEqual(tp.pointer, p)
+                    XCTAssertEqual(tp.dataUInt16, 0)
+                    XCTAssertEqual(tp.signBit, false)
+                    XCTAssertEqual(tp.tagUInt3, 0)
+                    tp.pointer = p3
+                    XCTAssertEqual(tp.pointer, p3)
+                    XCTAssertEqual(tp.dataUInt16, 0)
+                    XCTAssertEqual(tp.signBit, false)
+                    XCTAssertEqual(tp.tagUInt3, 0)
+                    tp.pointer = p2
+                    XCTAssertEqual(tp.pointer, p2)
+                    XCTAssertEqual(tp.dataUInt16, 0)
+                    XCTAssertEqual(tp.signBit, false)
+                    XCTAssertEqual(tp.tagUInt3, 0)
+                }
             }
         }
     }
@@ -122,5 +142,44 @@ final class SwiftTaggedPointerTests: XCTestCase {
             MemoryLayout<TaggedPointer<UnsafeRawPointer>>.size,
             MemoryLayout<UInt64>.size,
         )
+    }
+    
+    func testCustomPointer() throws {
+        struct MyPointer: TaggablePointer {
+            var fakePointerContents: Int
+            
+            var bitPatternAsInt: Int {
+                fakePointerContents
+            }
+            
+            init?(bitPattern: Int) {
+                self.fakePointerContents = bitPattern
+            }
+            
+            init(_ fakePointerContents: Int) {
+                self.fakePointerContents = fakePointerContents
+            }
+        }
+        var tp = TaggedPointer<MyPointer>(MyPointer(0))
+        XCTAssertEqual(tp.pointer?.fakePointerContents, 0)
+        tp.dataUInt16 = .max
+        tp.tagUInt3 = 7
+        tp.signBit = true
+        XCTAssertEqual(tp.pointer?.fakePointerContents, 0)
+        XCTAssertEqual(tp.dataUInt16, .max)
+        XCTAssertEqual(tp.tagUInt3, 7)
+        XCTAssertEqual(tp.signBit, true)
+        tp.dataUInt16 = 0
+        tp.tagUInt3 = 0
+        tp.signBit = false
+        tp.pointer?.fakePointerContents = Int(bitPattern: 0b0000000000000000011111111111111111111111111111111111111111111000 as UInt)
+        XCTAssertEqual(tp.dataUInt16, 0)
+        XCTAssertEqual(tp.tagUInt3, 0)
+        XCTAssertEqual(tp.signBit, false)
+        XCTAssertEqual(tp.pointer?.fakePointerContents, Int(bitPattern: 0b0000000000000000011111111111111111111111111111111111111111111000 as UInt))
+        tp.dataUInt16 = .max
+        tp.tagUInt3 = 7
+        tp.signBit = true
+        XCTAssertEqual(UInt(bitPattern: TaggedPointer.rawStorage(of: tp)), .max)
     }
 }

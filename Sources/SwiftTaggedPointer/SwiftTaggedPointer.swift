@@ -70,7 +70,7 @@
 ///                          |   `dataInt16`   |                                              |
 ///                          |----------------------------------------------------------------|
 /// ```
-public struct TaggedPointer<P : _Pointer>: Equatable, Sendable {
+public struct TaggedPointer<P: TaggablePointer>: Equatable, Sendable {
     
     #if !DEBUG
     @usableFromInline
@@ -83,10 +83,8 @@ public struct TaggedPointer<P : _Pointer>: Equatable, Sendable {
     @inlinable
     @_alwaysEmitIntoClient
     #endif
-    public init(_ pointer: P?) {
-        assert(MemoryLayout<Self>.size == MemoryLayout<UInt64>.size)
-        self._storage = 0
-        self.setPointer(pointer)
+    public static func rawStorage(of taggedPointer: Self) -> Int {
+        return taggedPointer._storage
     }
     
     #if !DEBUG
@@ -94,25 +92,34 @@ public struct TaggedPointer<P : _Pointer>: Equatable, Sendable {
     @inlinable
     @_alwaysEmitIntoClient
     #endif
-    public func getPointer(_ type: P.Type = P.self) -> P? {
-        assert(MemoryLayout<P>.size == MemoryLayout<UInt64>.size)
+    public init(_ pointer: consuming P?) {
         assert(MemoryLayout<Self>.size == MemoryLayout<UInt64>.size)
-        // Make pointer canonical by setting top 17 bits to 0 and bottom 3 bits to 0
-        return P(bitPattern: _storage & canonicalPointerGutsMask)
+        self._storage = 0
+        self.pointer = pointer
     }
-
+    
     #if !DEBUG
     @inline(__always)
     @inlinable
     @_alwaysEmitIntoClient
     #endif
-    public mutating func setPointer(_ pointer: P?) {
-        assert(MemoryLayout<P>.size == MemoryLayout<UInt64>.size)
-        assert(Int(bitPattern: pointer) & canonicalPointerGutsMaskNegated == 0)
-        // Clear pointer guts
-        _storage &= canonicalPointerGutsMaskNegated
-        // Set pointer guts
-        _storage |= Int(bitPattern: pointer)
+    public var pointer: P? {
+        borrowing _read {
+            assert(MemoryLayout<P>.size == MemoryLayout<UInt64>.size)
+            assert(MemoryLayout<Self>.size == MemoryLayout<UInt64>.size)
+            // Make pointer canonical by setting top 17 bits to 0 and bottom 3 bits to 0
+            yield P(bitPattern: _storage & canonicalPointerGutsMask)
+        }
+        mutating _modify {
+            assert(MemoryLayout<P>.size == MemoryLayout<UInt64>.size)
+            var pointer: P? = P(bitPattern: _storage & canonicalPointerGutsMask)
+            yield &pointer
+            assert(Int(bitPatternFromTaggablePointer: pointer) & canonicalPointerGutsMaskNegated == 0, "Invalid pointer guts")
+            // Clear pointer guts
+            _storage &= canonicalPointerGutsMaskNegated
+            // Set pointer guts
+            _storage |= Int(bitPatternFromTaggablePointer: pointer)
+        }
     }
 
     /// The 3 bit tag
@@ -286,5 +293,48 @@ private let signBitMaskNegated: Int = ~signBitMask
 #error("This code assumes little endian")
 #endif
 
+public protocol TaggablePointer {
+    init?(bitPattern: Int)
+    var bitPatternAsInt: Int { borrowing get }
+}
 
+extension UnsafePointer: TaggablePointer {
+    public var bitPatternAsInt: Int {
+        Int(bitPattern: self)
+    }
+}
 
+extension UnsafeMutablePointer: TaggablePointer {
+    public var bitPatternAsInt: Int {
+        Int(bitPattern: self)
+    }
+}
+
+extension UnsafeRawPointer: TaggablePointer {
+    public var bitPatternAsInt: Int {
+        Int(bitPattern: self)
+    }
+}
+
+extension UnsafeMutableRawPointer: TaggablePointer {
+    public var bitPatternAsInt: Int {
+        Int(bitPattern: self)
+    }
+}
+
+extension OpaquePointer: TaggablePointer {
+    public var bitPatternAsInt: Int {
+        Int(bitPattern: self)
+    }
+}
+
+extension Int {
+    public init<P: TaggablePointer>(bitPatternFromTaggablePointer pointer: P?) {
+        switch pointer {
+        case .none:
+            self = 0
+        case .some(let pointer):
+            self = pointer.bitPatternAsInt
+        }
+    }
+}
