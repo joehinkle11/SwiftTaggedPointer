@@ -16,7 +16,7 @@ withUnsafePointer(to: x) { p in
     tp.bitTag1 = true
     tp.bitTag2 = true
     tp.dataInt17 = 23
-    assert(tp.getPointer() == p)
+    assert(tp.pointer == p)
 }
 ```
 
@@ -44,8 +44,7 @@ The top 16 bits are always 0 because the OS assumes that memory never goes above
           Raw storage:  |-----------------------------64 bits----------------------------|
 TaggedPointer anatomy:  |-------17 bits-------|------44 bits-------|--------3 bits-------|
                         | custom 17 bit data  |    pointer data    |  custom 3 bit tag   |
-                        |                     |    `getPointer`    |                     |
-                        |                     |    `setPointer`    |                     |
+                        |                     |      `pointer`     |                     |
                         |----------------------------------------------------------------|
 
                         |-----------------------------64 bits----------------------------|
