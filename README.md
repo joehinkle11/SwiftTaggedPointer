@@ -94,7 +94,7 @@ Run everything locally with:
 ./Scripts/check-all.sh
 ```
 
-This runs the checks on the host, on `wasm`, and on `wasm-embedded`. It needs a Swift 6.4 toolchain with the matching Wasm SDKs installed (see the [WebAssembly getting-started guide](https://www.swift.org/documentation/articles/wasm-getting-started.html)); override the SDK IDs with `WASM_SDK` / `WASM_EMBEDDED_SDK` if yours differ.
+This runs the checks on the host, on `wasm`, and on `wasm-embedded`. It needs a Swift 6.4 toolchain with the matching Wasm SDKs installed (see the [WebAssembly getting-started guide](https://www.swift.org/documentation/articles/wasm-getting-started.html)) plus `wasmtime` on `PATH` to execute the wasm binaries; override the SDK IDs with `WASM_SDK` / `WASM_EMBEDDED_SDK` if yours differ.
 
 Note: the `wasm-embedded` run prints benign "data race detected" runtime warnings for every `withUnsafePointer` scope. That is an artifact of the Embedded Swift SDK, not a failure — the script only requires a zero exit code plus the `PASS` marker.
 
