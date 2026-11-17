@@ -111,7 +111,7 @@ let package = Package(
   dependencies: [
     .package(
       url: "https://github.com/joehinkle11/SwiftTaggedPointer.git", 
-      .upToNextMajor(from: "1.0.0") // or `.upToNextMinor
+      .upToNextMajor(from: "2.0.0") // or `.upToNextMinor
     )
   ],
   targets: [
