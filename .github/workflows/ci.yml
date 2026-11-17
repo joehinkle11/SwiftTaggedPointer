@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, 'portable-*']
+    branches: [main]
   pull_request:
 
 jobs:
@@ -9,6 +9,11 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: Install swiftly
+        run: |
+          curl -O https://download.swift.org/swiftly/darwin/swiftly.pkg
+          installer -pkg swiftly.pkg -target CurrentUserHomeDirectory
+          echo "$HOME/.swiftly/bin" >> "$GITHUB_PATH"
       - name: Install Swift 6.4.0
         run: |
           swiftly install --assume-yes 6.4.0
