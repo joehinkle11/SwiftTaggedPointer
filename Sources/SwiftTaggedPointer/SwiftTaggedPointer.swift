@@ -6,17 +6,23 @@
 //
 // This file can be used by itself or you can use the Swift Package.
 //
+// Storage is always a 64 bit unsigned integer, regardless of the platform's
+// native word size. On 32 bit platforms (including WebAssembly) a valid
+// pointer value fits in the low 32 bits, so it occupies the low end of the
+// pointer-guts field while the upper guts bits stay 0. All bit manipulation
+// uses logical integer shifts and masks, so the layout does not depend on
+// the platform's endianness.
+//
 // We assume that:
-//  1. The provided pointers are 8 byte aligned
+//  1. The provided pointers are 8 byte aligned (note: on 32 bit targets `Int`
+//     is only 4 byte aligned, so prefer 8 byte aligned pointees such as `UInt64`)
 //  2. The program is running in user space (not kernel space)
-//  3. The program is running on a 64 bit system
-//  4. The program is running on a little endian system
-//  5. The OS is not using the top 16 bits of pointers (which is true for all current OSes)
+//  3. The OS is not using the top 16 bits of pointers (which is true for all current OSes)
 //
 // The result is the following layout:
-//  1. The top 17 bits are always 0
-//  2. The next 44 bits are all the significant bits of the pointer
-//  3. The bottom 3 bits are the tag
+//  1. The top 17 bits hold custom data (a 16 bit magnitude plus a sign bit)
+//  2. The next 44 bits hold all the significant bits of the pointer
+//  3. The bottom 3 bits hold the tag
 //
 // The layout visualized:
 //                 Raw storage:  |-----------------------------64 bits----------------------------|
@@ -36,6 +42,9 @@
 //  then 0x8, then 0x10, etc. If you convert the pointer hex value to binary, you will see that the bottom 3
 //  bits are always 0.
 //
+//  On 32 bit platforms the pointer value never reaches above bit 31, so the same masks work unchanged: the
+//  pointer occupies the low end of the guts field and the remaining guts bits (32-46) stay 0.
+//
 
 /// A pointer that stores a 3 bit tag and a 17 bit integer within a pointer.
 /// You can either use the tag as a 3 bit integer (represented as UInt8 `tagAsUInt8`) or as 3 individual bits (`bitTag0`, `bitTag1`, `bitTag2`).
@@ -46,7 +55,7 @@
 ///            Raw storage:  |-----------------------------64 bits----------------------------|
 ///  TaggedPointer anatomy:  |-------17 bits-------|------44 bits-------|--------3 bits-------|
 ///                          | custom 17 bit data  |    pointer data    |  custom 3 bit tag   |
-///                          |                     |      `pointer`     |                     | 
+///                          |                     |      `pointer`     |                     |
 ///                          |----------------------------------------------------------------|
 ///
 ///                          |-----------------------------64 bits----------------------------|
@@ -70,22 +79,22 @@
 ///                          |----------------------------------------------------------------|
 /// ```
 public struct TaggedPointer<P: TaggablePointer>: Equatable, Sendable {
-    
+
     #if !DEBUG
     @usableFromInline
     @_alwaysEmitIntoClient
     #endif
-    internal var _storage: Int
-    
+    internal var _storage: UInt64
+
     #if !DEBUG
     @inline(__always)
     @inlinable
     @_alwaysEmitIntoClient
     #endif
-    public static func rawStorage(of taggedPointer: Self) -> Int {
+    public static func rawStorage(of taggedPointer: Self) -> UInt64 {
         return taggedPointer._storage
     }
-    
+
     #if !DEBUG
     @inline(__always)
     @inlinable
@@ -96,7 +105,7 @@ public struct TaggedPointer<P: TaggablePointer>: Equatable, Sendable {
         self._storage = 0
         self.pointer = pointer
     }
-    
+
     #if !DEBUG
     @inline(__always)
     @inlinable
@@ -104,20 +113,20 @@ public struct TaggedPointer<P: TaggablePointer>: Equatable, Sendable {
     #endif
     public var pointer: P? {
         borrowing _read {
-            assert(MemoryLayout<P>.size == MemoryLayout<UInt64>.size)
             assert(MemoryLayout<Self>.size == MemoryLayout<UInt64>.size)
-            // Make pointer canonical by setting top 17 bits to 0 and bottom 3 bits to 0
+            // Make pointer canonical by keeping only the 44 guts bits
             yield P(bitPattern: _storage & canonicalPointerGutsMask)
         }
         mutating _modify {
-            assert(MemoryLayout<P>.size == MemoryLayout<UInt64>.size)
+            assert(MemoryLayout<Self>.size == MemoryLayout<UInt64>.size)
             var pointer: P? = P(bitPattern: _storage & canonicalPointerGutsMask)
             yield &pointer
-            assert(Int(bitPatternFromTaggablePointer: pointer) & canonicalPointerGutsMaskNegated == 0, "Invalid pointer guts")
+            let bits = UInt64(bitPatternFromTaggablePointer: pointer)
+            assert(bits & canonicalPointerGutsMaskNegated == 0, "Invalid pointer guts: pointers must be 8 byte aligned user-space addresses")
             // Clear pointer guts
             _storage &= canonicalPointerGutsMaskNegated
             // Set pointer guts
-            _storage |= Int(bitPatternFromTaggablePointer: pointer)
+            _storage |= bits
         }
     }
 
@@ -132,11 +141,11 @@ public struct TaggedPointer<P: TaggablePointer>: Equatable, Sendable {
             return UInt8(_storage & bottom3BitsMask)
         }
         set {
-            assert(Int(newValue) & bottom3BitsMaskNegated == 0)
+            assert(UInt64(newValue) & bottom3BitsMaskNegated == 0)
             // Clear tag
             _storage &= bottom3BitsMaskNegated
             // Set tag
-            _storage |= Int(newValue)
+            _storage |= UInt64(newValue)
         }
     }
 
@@ -205,14 +214,13 @@ public struct TaggedPointer<P: TaggablePointer>: Equatable, Sendable {
     #endif
     public var dataUInt16: UInt16 {
         get {
-            return UInt16(bitPattern: Int16(_storage >> 48))
+            return UInt16(truncatingIfNeeded: _storage >> 48)
         }
         set {
-            assert(Int(bitPattern: UInt(newValue)) << 48 & top16BitsMaskNegated == 0)
             // Clear data
             _storage &= top16BitsMaskNegated
             // Set data
-            _storage |= Int(bitPattern: UInt(newValue)) << 48
+            _storage |= UInt64(newValue) << 48
         }
     }
 
@@ -250,15 +258,13 @@ public struct TaggedPointer<P: TaggablePointer>: Equatable, Sendable {
             // Clear data
             _storage &= top17BitsMaskNegated
             if newValue < 0 {
-                assert(Int(bitPattern: UInt(-newValue - 1)) << 48 & top16BitsMaskNegated == 0)
                 // Set sign bit
                 _storage |= signBitMask
                 // Set magnitude
-                _storage |= Int(bitPattern: UInt(-newValue - 1)) << 48
+                _storage |= UInt64(-newValue - 1) << 48
             } else {
-                assert(Int(bitPattern: UInt(newValue)) << 48 & top16BitsMaskNegated == 0)
                 // Set magnitude
-                _storage |= Int(bitPattern: UInt(newValue)) << 48
+                _storage |= UInt64(newValue) << 48
             }
         }
     }
@@ -266,74 +272,89 @@ public struct TaggedPointer<P: TaggablePointer>: Equatable, Sendable {
 
 // Constants
 @_alwaysEmitIntoClient
-private let canonicalPointerGutsMask: Int = Int(bitPattern: 0b0000000000000000011111111111111111111111111111111111111111111000 as UInt)
+private let canonicalPointerGutsMask: UInt64 = 0b0000000000000000011111111111111111111111111111111111111111111000
 @_alwaysEmitIntoClient
-private let canonicalPointerGutsMaskNegated: Int = ~canonicalPointerGutsMask
+private let canonicalPointerGutsMaskNegated: UInt64 = ~canonicalPointerGutsMask
 @_alwaysEmitIntoClient
-private let bottom3BitsMask: Int = Int(bitPattern: 0b111 as UInt)
+private let bottom3BitsMask: UInt64 = 0b111
 @_alwaysEmitIntoClient
-private let bottom3BitsMaskNegated: Int = ~bottom3BitsMask
+private let bottom3BitsMaskNegated: UInt64 = ~bottom3BitsMask
 @_alwaysEmitIntoClient
-private let top17BitsMask: Int = Int(bitPattern: 0b1111111111111111100000000000000000000000000000000000000000000000 as UInt)
+private let top17BitsMask: UInt64 = 0b1111111111111111100000000000000000000000000000000000000000000000
 @_alwaysEmitIntoClient
-private let top17BitsMaskNegated: Int = ~top17BitsMask
+private let top17BitsMaskNegated: UInt64 = ~top17BitsMask
 @_alwaysEmitIntoClient
-private let top16BitsMask: Int = Int(bitPattern: 0b1111111111111111000000000000000000000000000000000000000000000000 as UInt)
+private let top16BitsMask: UInt64 = 0b1111111111111111000000000000000000000000000000000000000000000000
 @_alwaysEmitIntoClient
-private let top16BitsMaskNegated: Int = ~top16BitsMask
+private let top16BitsMaskNegated: UInt64 = ~top16BitsMask
 @_alwaysEmitIntoClient
-private let signBitMask: Int = Int(bitPattern: 0b100000000000000000000000000000000000000000000000 as UInt)
+private let signBitMask: UInt64 = 0b100000000000000000000000000000000000000000000000
 @_alwaysEmitIntoClient
-private let signBitMaskNegated: Int = ~signBitMask
+private let signBitMaskNegated: UInt64 = ~signBitMask
 
 
-// Compile time asserts
-#if _endian(big)
-#error("This code assumes little endian")
-#endif
-
+/// A pointer that can be stored in a `TaggedPointer`.
+///
+/// The bit pattern is expressed as a `UInt64` so the same conformance works on
+/// 32 bit and 64 bit platforms: 32 bit addresses zero-extend into the low
+/// end of the value.
 public protocol TaggablePointer {
-    init?(bitPattern: Int)
-    var bitPatternAsInt: Int { borrowing get }
+    init?(bitPattern: UInt64)
+    var bitPatternAsUInt64: UInt64 { borrowing get }
 }
 
 extension UnsafePointer: TaggablePointer {
-    public var bitPatternAsInt: Int {
-        Int(bitPattern: self)
+    public init?(bitPattern value: UInt64) {
+        self.init(bitPattern: Int(bitPattern: UInt(truncatingIfNeeded: value)))
+    }
+    public var bitPatternAsUInt64: UInt64 {
+        UInt64(UInt(bitPattern: Int(bitPattern: self)))
     }
 }
 
 extension UnsafeMutablePointer: TaggablePointer {
-    public var bitPatternAsInt: Int {
-        Int(bitPattern: self)
+    public init?(bitPattern value: UInt64) {
+        self.init(bitPattern: Int(bitPattern: UInt(truncatingIfNeeded: value)))
+    }
+    public var bitPatternAsUInt64: UInt64 {
+        UInt64(UInt(bitPattern: Int(bitPattern: self)))
     }
 }
 
 extension UnsafeRawPointer: TaggablePointer {
-    public var bitPatternAsInt: Int {
-        Int(bitPattern: self)
+    public init?(bitPattern value: UInt64) {
+        self.init(bitPattern: Int(bitPattern: UInt(truncatingIfNeeded: value)))
+    }
+    public var bitPatternAsUInt64: UInt64 {
+        UInt64(UInt(bitPattern: Int(bitPattern: self)))
     }
 }
 
 extension UnsafeMutableRawPointer: TaggablePointer {
-    public var bitPatternAsInt: Int {
-        Int(bitPattern: self)
+    public init?(bitPattern value: UInt64) {
+        self.init(bitPattern: Int(bitPattern: UInt(truncatingIfNeeded: value)))
+    }
+    public var bitPatternAsUInt64: UInt64 {
+        UInt64(UInt(bitPattern: Int(bitPattern: self)))
     }
 }
 
 extension OpaquePointer: TaggablePointer {
-    public var bitPatternAsInt: Int {
-        Int(bitPattern: self)
+    public init?(bitPattern value: UInt64) {
+        self.init(bitPattern: Int(bitPattern: UInt(truncatingIfNeeded: value)))
+    }
+    public var bitPatternAsUInt64: UInt64 {
+        UInt64(UInt(bitPattern: Int(bitPattern: self)))
     }
 }
 
-extension Int {
+extension UInt64 {
     public init<P: TaggablePointer>(bitPatternFromTaggablePointer pointer: P?) {
         switch pointer {
         case .none:
             self = 0
         case .some(let pointer):
-            self = pointer.bitPatternAsInt
+            self = pointer.bitPatternAsUInt64
         }
     }
 }
